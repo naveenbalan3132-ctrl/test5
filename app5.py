@@ -72,5 +72,18 @@ if st.button("Load Data"):
 
         df = df.sort_values("Date").tail(days)
 
-        st.subheader("📄 Historical Data")
-        st.dataframe(df, use)    
+       st.subheader("📄 Historical Data")
+st.dataframe(df, use_container_width=True)
+
+# --------------------------------
+# 3. PRICE CHART (Altair)
+# --------------------------------
+st.subheader("📉 Price Chart")
+
+chart = alt.Chart(df).mark_line().encode(
+    x="Date:T",
+    y="Close:Q"
+)
+
+st.altair_chart(chart, use_container_width=True)
+  
