@@ -73,4 +73,4 @@ if st.button("Load Data"):
         df = df.sort_values("Date").tail(days)
 
         st.subheader("📄 Historical Data")
-        st.dataframe(df, use
+        st.dataframe(df, use)    
