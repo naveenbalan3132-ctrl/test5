@@ -1,51 +1,53 @@
 import streamlit as st
 import pandas as pd
-from nsepython import *
-import ta
+from nseindia import NseIndia
 import altair as alt
+import ta
 
 st.set_page_config(page_title="NSE Stock Analysis", layout="wide")
 
+nse = NseIndia()
+
 st.title("📈 NSE Stock Analysis (Matplotlib-Free)")
 
-# --------------------------- USER INPUT ---------------------------
 symbol = st.text_input("Enter NSE Stock Symbol (e.g., RELIANCE)", "RELIANCE")
-days = st.slider("Number of days", 30, 365, 180)
+days = st.slider("Number of Days", 30, 365, 180)
 
 if st.button("Load Data"):
     try:
-        # ---------------------- FETCH DATA ----------------------
-        st.subheader(f"📥 Fetching data for: {symbol}")
+        st.subheader(f"Fetching data for: {symbol}")
 
-        df = nse_stock_quote_fno(symbol)
+        # ------------------ LIVE QUOTE ------------------
+        quote = nse.stock_quote(symbol)
 
-        if df is None:
-            st.error("Failed to fetch data. Check the symbol.")
+        if not quote:
+            st.error("Invalid symbol or NSE blocked request.")
             st.stop()
 
-        # Fetch historical data using NSEPython
-        hist = nsefetch(f"https://www.nseindia.com/api/historical/cm/equity?symbol={symbol}&series=[%22EQ%22]&from=2023-01-01&to=2030-12-31")
+        # ------------------ HISTORICAL DATA ------------------
+        hist = nse.equity_history(
+            symbol=symbol,
+            from_date="2023-01-01",
+            to_date="2035-12-31"
+        )
 
-        if 'data' not in hist or len(hist['data']) == 0:
-            st.error("Historical data unavailable for this symbol.")
+        if hist.empty:
+            st.error("No historical data available.")
             st.stop()
 
-        df = pd.DataFrame(hist['data'])
-        df['CH_TIMESTAMP'] = pd.to_datetime(df['CH_TIMESTAMP'])
-        df = df.sort_values("CH_TIMESTAMP").tail(days)
-
-        df.rename(columns={
+        df = hist.rename(columns={
             "CH_TIMESTAMP": "Date",
             "CH_OPENING_PRICE": "Open",
             "CH_CLOSING_PRICE": "Close",
             "CH_TRADE_HIGH_PRICE": "High",
             "CH_TRADE_LOW_PRICE": "Low",
-            "CH_TOT_TRADED_QTY": "Volume",
-        }, inplace=True)
+            "CH_TOT_TRADED_QTY": "Volume"
+        })
 
-        df = df[["Date", "Open", "High", "Low", "Close", "Volume"]]
+        df["Date"] = pd.to_datetime(df["Date"])
+        df = df.sort_values("Date").tail(days)
 
-        # ---------------------- INDICATORS ----------------------
+        # ------------------ Indicators ------------------
         df["SMA20"] = df["Close"].rolling(20).mean()
         df["SMA50"] = df["Close"].rolling(50).mean()
         df["RSI"] = ta.momentum.rsi(df["Close"], window=14)
@@ -53,48 +55,33 @@ if st.button("Load Data"):
         st.success("Data loaded successfully!")
         st.dataframe(df, use_container_width=True)
 
-        # ---------------------- PRICE CHART ----------------------
+        # ------------------ Price Chart ------------------
         st.subheader("📉 Price Chart")
 
-        chart_df = df.copy()
+        base = alt.Chart(df).encode(x="Date:T")
 
-        price_chart = alt.Chart(chart_df).mark_line().encode(
-            x="Date:T",
-            y="Close:Q",
-            color=alt.value("#1f77b4")
-        )
+        price_line = base.mark_line(color="#1f77b4").encode(y="Close:Q")
+        sma20_line = base.mark_line(color="orange").encode(y="SMA20:Q")
+        sma50_line = base.mark_line(color="green").encode(y="SMA50:Q")
 
-        sma20_chart = alt.Chart(chart_df).mark_line().encode(
-            x="Date:T",
-            y="SMA20:Q",
-            color=alt.value("orange")
-        )
+        st.altair_chart(price_line + sma20_line + sma50_line, use_container_width=True)
 
-        sma50_chart = alt.Chart(chart_df).mark_line().encode(
-            x="Date:T",
-            y="SMA50:Q",
-            color=alt.value("green")
-        )
-
-        st.altair_chart(price_chart + sma20_chart + sma50_chart, use_container_width=True)
-
-        # ---------------------- RSI CHART ----------------------
+        # ------------------ RSI Chart ------------------
         st.subheader("📈 RSI Indicator")
 
-        rsi_chart = alt.Chart(chart_df).mark_line().encode(
+        rsi_chart = alt.Chart(df).mark_line().encode(
             x="Date:T",
-            y="RSI:Q",
+            y="RSI:Q"
         )
 
         st.altair_chart(rsi_chart, use_container_width=True)
 
-        # ---------------------- FINAL SECTION ----------------------
+        # ------------------ Summary ------------------
         st.subheader("📊 Summary")
-
-        st.write(f"**Latest Close Price:** {df['Close'].iloc[-1]:,.2f}")
-        st.write(f"**20-Day SMA:** {df['SMA20'].iloc[-1]:,.2f}")
-        st.write(f"**50-Day SMA:** {df['SMA50'].iloc[-1]:,.2f}")
-        st.write(f"**Latest RSI:** {df['RSI'].iloc[-1]:.2f}")
+        st.write(f"**Latest Close Price:** ₹{df['Close'].iloc[-1]:,.2f}")
+        st.write(f"**20-Day SMA:** ₹{df['SMA20'].iloc[-1]:,.2f}")
+        st.write(f"**50-Day SMA:** ₹{df['SMA50'].iloc[-1]:,.2f}")
+        st.write(f"**RSI:** {df['RSI'].iloc[-1]:.2f}")
 
     except Exception as e:
         st.error(f"Error: {e}")
